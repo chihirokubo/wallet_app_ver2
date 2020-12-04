@@ -259,6 +259,7 @@ class BlockChain(object):
 
         return True
 
+
     """ 
     # Added By コンセンサス
     def illegal(self, recipient_blockchain_address, value):

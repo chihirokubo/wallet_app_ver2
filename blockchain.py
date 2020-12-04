@@ -8,13 +8,14 @@ import time
 import threading
 
 # Deleted by 暗号班
-# 楕円曲線からの鍵生成をスクラッチ実装したため
-#from ecdsa import NIST256p
-#from ecdsa import VerifyingKey
+# 楕円曲線暗号と署名検証はスクラッチ実装したので不必要
+# from ecdsa import NIST256p
+# from ecdsa import VerifyingKey
 import requests
 
 import utils
-# 鍵をつくるために必要なクラス By 暗号班
+# Added By 暗号班
+# 公開鍵生成に使用
 from S256 import S256Point
 from S256 import G
 from S256 import N
@@ -23,15 +24,11 @@ from S256 import N
 #MINING_DIFFICULTY = 3
 MINING_SENDER = 'THE BLOCKCHAIN'
 MINING_REWARD = 1.0
-#MINING_TIMER_SEC = 20
+MINING_TIMER_SEC = 20
 
 BLOCKCHAIN_PORT_RANGE = (5000, 5003)
 NEIGHBOURS_IP_RANGE_NUM = (0, 1)
 BLOCKCHAIN_NEIGHBOURS_SYNC_TIME_SEC = 20
-
-# Added By コンセンサス
-ILLEGAL_TIMER_SEC = 20
-HACKING = 'HACKER'
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
@@ -40,21 +37,11 @@ logger = logging.getLogger(__name__)
 class BlockChain(object):
 
     def __init__(self, blockchain_address=None, port=None):
-        """
         self.transaction_pool = []
         self.chain = []
         self.neighbours = []
-        self.create_block(0, self.hash({}))
-        self.blockchain_address = blockchain_address
-        self.port = port
-        self.mining_semaphore = threading.Semaphore(1)
-        self.sync_neighbours_semaphore = threading.Semaphore(1)
-        """
-        self.transaction_pool = []
-        self.chain = []
-        self.neighbours = []
-        self.mining_speed = random.uniform(5.0, 5.3) # Added By コンセンサス
-        self.difficulty = 3                          # Added By コンセンサス
+        self.difficulty = 3     # Added By コンセンサス
+        self.mining_speed = 0.0 # Added By コンセンサス
         self.create_block(0, self.hash({}))
         self.blockchain_address = blockchain_address
         self.port = port
@@ -65,7 +52,6 @@ class BlockChain(object):
         self.sync_neighbours()
         self.resolve_conflicts()
         self.start_mining()
-        # self.carry_on_illegal() # Added By コンセンサス班
 
     # 共通
     def set_neighbours(self):
@@ -190,22 +176,26 @@ class BlockChain(object):
         total = u * G + v * P
         return total.x.num == signature[0]
 
-    #採掘難度の調整 Added By コンセンサス
-    def daa(self, speed):
-        if 6.0 < speed:
-            self.mining_speed -= random.random()
-            self.difficulty -= 1
-        elif speed > 5.0 and speed < 6.0:
-            self.mining_speed -= random.random()
-            if self.mining_speed < 5.0:
-                self.difficulty += 1
-        elif speed > 4.0 and speed < 5.0:
-            self.mining_speed += random.random()
-            if self.mining_speed > 5.6:
-                self.difficulty -= 1
+    # Added By コンセンサス
+    # 採掘難易度の調整
+    def difficulty_adjustment(self, speed):
+        if self.difficulty < 3:
+            self.difficulty = 3
+            return True
         else:
-            self.mining_speed = 5.0 + random.uniform(0.0, 0.4)
-        return self.mining_speed
+            if speed < 0.0478:
+                self.difficulty += 1
+                self.mining_speed = speed + random.uniform(5.0, 5.3)
+            elif 0.0478 <= speed and speed <= 0.5957:
+                self.difficulty = 3
+                self.mining_speed = speed + 5.0
+            elif speed > 0.5957:
+                self.difficulty -= 1
+                self.mining_speed = speed + random.uniform(4.4, 4.7)
+                if self.mining_speed >= 5.5:
+                    self.mining_speed -= random.uniform(0.5, 1.0)
+            logger.info({'action': 'changing difficulty', 'status': 'success'})
+            return True
         
     # Changed By コンセンサス
     def valid_proof(self, transactions, previous_hash, nonce):
@@ -217,14 +207,18 @@ class BlockChain(object):
         guess_hash = self.hash(guess_block)
         return guess_hash[:self.difficulty] == '0'*self.difficulty
 
-    # 共通
+    # Changed By コンセンサス
     def proof_of_work(self):
-      # transactions = copy.deepcopy(self.transaction_pool) # ここだけAdded By コンセンサス
         transactions = self.transaction_pool.copy()
         previous_hash = self.hash(self.chain[-1])
         nonce = 0
+        start = time.time()
         while self.valid_proof(transactions, previous_hash, nonce) is False:
             nonce += 1
+            elapse = time.time() - start
+            if elapse >= 10.0:
+                self.difficulty -= 1
+                return -1
         return nonce
 
 
@@ -233,55 +227,27 @@ class BlockChain(object):
         # if not self.transaction_pool:
         #    return False
         start = time.time()
-
         self.add_transaction(
             sender_blockchain_address=MINING_SENDER,
             recipient_blockchain_address=self.blockchain_address,
             value=MINING_REWARD)
         nonce = self.proof_of_work()
+        if nonce == -1:
+            return False
         previous_hash = self.hash(self.chain[-1])
         self.create_block(nonce, previous_hash)
-
-        elapse = round(time.time() - start)
-        self.mining_speed = round(random.uniform(4.95, 5.05)+elapse, 3)
-
         logger.info({'action': 'mining', 'status': 'success'})
+
         for node in self.neighbours:
             requests.put(f'http://{node}/consensus')
 
-        self.daa(self.mining_speed)
+        elapse = round(time.time() - start, 4)
+        self.difficulty_adjustment(elapse)
 
-        # print('mining time : ' + str(round(self.mining_speed, 3)))
-        # print('difficulty : ', str(self.difficulty))
-
-        stop = round(self.mining_speed)
-        time.sleep(stop)
+        # print('mining speed : ', str(round(self.mining_speed, 3)))
+        # print('difficult : ', str(self.difficulty))
 
         return True
-
-
-    """ 
-    # Added By コンセンサス
-    def illegal(self, recipient_blockchain_address, value):
-        if self.add_transaction:
-            if self.chain == []:
-                logger.info({'action': 'illegal', 'status': 'chain is empty'})
-                return False
-            for block in self.chain:
-                for transaction in block['transaction']:
-                    if transaction['recipient_blockchain_address'] == recipient_blockchain_address:
-                        transaction['value'] = value
-                        logger.info({'action': 'illegal', 'status': 'success'})
-                        return True
-                logger.info({'action': 'illegal', 'status': 'fail'})
-                return False
-        return False
-    
-    def carry_on_illegal(self):
-        while True:
-            self.illegal(HACKING, 1000)
-            time.sleep(ILLEGAL_TIMER_SEC)     
-    """
 
     # Changed by コンセンサス
     def start_mining(self):
@@ -290,7 +256,8 @@ class BlockChain(object):
             with contextlib.ExitStack() as stack:
                 stack.callback(self.mining_semaphore.release)
                 self.mining()
-                loop = threading.Timer(self.mining_speed, self.start_mining)
+                mining_interval = self.mining_speed + random.uniform(9.8, 10.3)
+                loop = threading.Timer(round(mining_interval), self.start_mining)
                 loop.start()
 
     # 共通
@@ -299,15 +266,12 @@ class BlockChain(object):
         for block in self.chain:
             for transaction in block['transactions']:
                 value = float(transaction['value'])
-                if blockchain_address == \
-                        transaction['recipient_blockchain_address']:
+                if blockchain_address == transaction['recipient_blockchain_address']:
                     total_amount += value
-                if blockchain_address == \
-                        transaction['sender_blockchain_address']:
+                if blockchain_address == transaction['sender_blockchain_address']:
                     total_amount -= value
         return total_amount
 
-    
     # Chaged By コンセンサス
     def valid_chain(self, chain):
         pre_block = chain[0]
@@ -348,4 +312,4 @@ class BlockChain(object):
         logger.info({'action': 'resolve_conflicts', 'status': 'not_replaced'})
         return False
 
-    
+

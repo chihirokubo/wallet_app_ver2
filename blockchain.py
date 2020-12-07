@@ -16,9 +16,9 @@ import requests
 import utils
 # Added By 暗号班
 # 公開鍵生成に使用
-from S256 import S256Point
-from S256 import G
-from S256 import N
+from crypt import S256Point
+from crypt import G
+from crypt import N
 
 # Added & Deleted By コンセンサス班
 #MINING_DIFFICULTY = 3

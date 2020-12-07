@@ -1,7 +1,8 @@
-from FieldElement import FieldElement
-from Point import Point
+from .FieldElement import FieldElement
+from .Point import Point
 
-from helper import encode_base58_checksum, hash160
+from .helper import encode_base58_checksum
+from .helper import hash160
 #import hmac
 #from io import BytesIO
 #from random import randint

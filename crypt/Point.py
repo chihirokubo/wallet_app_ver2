@@ -1,4 +1,4 @@
-from FieldElement import FieldElement
+from .FieldElement import FieldElement
 
 
 class Point(object):

@@ -1,5 +1,5 @@
-from S256 import G, N
-from Signature import Signature
+from .S256 import G, N
+from .Signature import Signature
 
 class PrivateKey(object):
 

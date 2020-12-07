@@ -8,13 +8,13 @@ import sys
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
-from ecdsa import NIST256p
-from ecdsa import SigningKey
+#from ecdsa import NIST256p
+#from ecdsa import SigningKey
 
-from PrivateKey import PrivateKey
-from Signature import Signature
-from S256 import S256Point
-from S256 import P
+from crypt import PrivateKey
+from crypt import Signature
+from crypt import S256Point
+from crypt import P
 import utils
 
 

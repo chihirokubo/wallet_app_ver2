@@ -4,6 +4,8 @@ import hashlib
 import random
 import logging
 import sys
+import time
+import json
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
@@ -43,7 +45,13 @@ class Wallet(object):
 
     @property
     def blockchain_address(self):
-        return self._blockchain_address 
+        return self._blockchain_address
+
+    def log_in(self, public_key, private_key):
+        self._public_key = public_key
+        self._private_key = private_key
+        self._blockchain_address = self._private_key.address()
+
 
 class Transaction(object):
 
@@ -55,6 +63,20 @@ class Transaction(object):
         self.sender_blockchain_address = sender_blockchain_address
         self.recipient_blockchain_address = recipient_blockchain_address
         self.value = value
+        self.timestamp = time.time()
+        self.signature = self.generate_signature()
+
+    def get_json_msg(self):
+        msg = {
+            'sender_private_key' : self.sender_private_key,
+            'sender_public_key': self.sender_public_key,
+            'sender_blockchain_address': self.sender_blockchain_address,
+            'recipient_blockchain_address': self.recipient_blockchain_address,
+            'value': float(self.value),
+            'timestamp': self.timestamp,
+            'signature': self.signature
+        }
+        return json.dupms(msg)
 
     def generate_signature(self):
         """ 送金者の秘密鍵でトランザクションに署名
@@ -66,7 +88,8 @@ class Transaction(object):
         transaction = utils.sorted_dict_by_key({
             'sender_blockchain_address': self.sender_blockchain_address,
             'recipient_blockchain_address': self.recipient_blockchain_address,
-            'value': float(self.value)
+            'value': float(self.value),
+            'timestamp': self.timestamp
         })
         sha256.update(str(transaction).encode('utf-8'))
         message = sha256.digest()

@@ -6,6 +6,7 @@ import sys
 import random
 import time
 import threading
+import copy
 
 # Deleted by 暗号班
 # 楕円曲線暗号と署名検証はスクラッチ実装したので不必要
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 class BlockChain(object):
 
-    def __init__(self, blockchain_address=None, port=None):
+    def __init__(self, blockchain_address=None):
         self.transaction_pool = []
         self.chain = []
         self.neighbours = []
@@ -44,14 +45,6 @@ class BlockChain(object):
         self.mining_speed = 0.0 # Added By コンセンサス
         self.create_block(0, self.hash({}))
         self.blockchain_address = blockchain_address
-        self.port = port
-        self.mining_semaphore = threading.Semaphore(1)
-        self.sync_neighbours_semaphore = threading.Semaphore(1)
-
-    def run(self):
-        self.sync_neighbours()
-        self.resolve_conflicts()
-        self.start_mining()
 
     # 共通
     def set_neighbours(self):
@@ -77,17 +70,12 @@ class BlockChain(object):
     # 共通
     def create_block(self, nonce, previous_hash):
         block = utils.sorted_dict_by_key({
-            'timestamp': time.time(),
             'transactions': self.transaction_pool,
             'nonce': nonce,
             'previous_hash': previous_hash
         })
         self.chain.append(block)
-        self.transaction_pool = []
-
-        for node in self.neighbours:
-            requests.delete(f'http://{node}/transactions')
-
+        
         return block
 
     # 共通
@@ -97,13 +85,14 @@ class BlockChain(object):
 
     # 共通
     def add_transaction(self, sender_blockchain_address,
-                        recipient_blockchain_address, value,
+                        recipient_blockchain_address, value, timestamp,
                         sender_public_key=None, signature=None):
 
         transaction = utils.sorted_dict_by_key({
             'sender_blockchain_address': sender_blockchain_address,
             'recipient_blockchain_address': recipient_blockchain_address,
-            'value': float(value)
+            'value': float(value),
+            'timestamp': timestamp
         })
 
         if sender_blockchain_address == MINING_SENDER:
@@ -125,12 +114,12 @@ class BlockChain(object):
 
     # 共通
     def create_transaction(self, sender_blockchain_address,
-                           recipient_blockchain_address, value,
+                           recipient_blockchain_address, value, timestamp,
                            sender_public_key, signature):
 
         is_transacted = self.add_transaction(
             sender_blockchain_address, recipient_blockchain_address,
-            value, sender_public_key, signature)
+            value, timestamp, sender_public_key, signature)
 
         if is_transacted:
             for node in self.neighbours:
@@ -210,6 +199,7 @@ class BlockChain(object):
     # Changed By コンセンサス
     def proof_of_work(self):
         transactions = self.transaction_pool.copy()
+        print('transaction pool : ',transactions)
         previous_hash = self.hash(self.chain[-1])
         nonce = 0
         start = time.time()
@@ -220,7 +210,6 @@ class BlockChain(object):
                 self.difficulty -= 1
                 return -1
         return nonce
-
 
     # Changed By コンセンサス
     def mining(self):
@@ -278,19 +267,40 @@ class BlockChain(object):
         current_index = 1
         while current_index < len(chain):
             block = chain[current_index]
+            print(block['previous_hash'])
+            print(self.hash(pre_block))
             if block['previous_hash'] != self.hash(pre_block):
+                print('previous hash conflict')
                 return False
 
             if not self.valid_proof(
                 block['transactions'], block['previous_hash'],
                 block['nonce']):
+                print('proof conflict')
                 return False
 
             pre_block = block
             current_index += 1
         return True
 
+    # p2pばん
+    def resolve_conflicts(self, chain):
+        print('resolve conflicts is called')
+        my_chain_len = len(self.chain)
+        new_chain_len = len(chain)
+
+        pool_for_orphan_blocks = copy.deepcopy(self.chain)
+        has_orphan = False
+
+        if new_chain_len > my_chain_len and self.valid_chain(chain):
+            pool_for_orphan_blocks =  set(pool_for_orphan_blocks) - (set(pool_for_orphan_blocks) & set(chain))
+            self.chain = chain
+            return True, list(pool_for_orphan_blocks)
+        return False, []
+
+
     # 共通
+    """
     def resolve_conflicts(self):
         longest_chain = None
         max_length = len(self.chain)
@@ -311,5 +321,26 @@ class BlockChain(object):
 
         logger.info({'action': 'resolve_conflicts', 'status': 'not_replaced'})
         return False
+    """
 
+    def get_my_chain(self):
+        return self.chain
 
+    def get_my_transaction_pool(self):
+        return self.get_my_transaction_pool
+
+    @property
+    def stored_transactions(self):
+        current_index = 1
+        stored_transactions_in_chain = []
+
+        while current_index < len(self.chain):
+            block = self.chain[current_index]
+            transactions = block['transactions']
+            
+            for t in transactions:
+                stored_transactions.append(t)
+            
+            current_index+=1
+        
+        return stored_transactions_in_chain

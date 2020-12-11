@@ -9,7 +9,6 @@ import wallet
 app = Flask(__name__)
 cache = {}
 
-
 def get_blockchain():
     cached_blockchain = cache.get('blockchain')
     if not cached_blockchain:

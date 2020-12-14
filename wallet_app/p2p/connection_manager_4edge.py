@@ -10,6 +10,7 @@ from .message_manager import (
     MSG_CORE_LIST,
     MSG_PING,
     MSG_ADD_AS_EDGE,
+    MSG_KEY_INFO,
     ERR_PROTOCOL_UNMATCH,
     ERR_VERSION_UNMATCH,
     OK_WITH_PAYLOAD,

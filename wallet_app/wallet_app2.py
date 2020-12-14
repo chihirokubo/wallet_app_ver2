@@ -11,6 +11,8 @@ import base64
 import time
 import pprint
 import copy
+import threading
+import contextlib
 
 from wallet import Transaction
 from core.client_core import ClientCore as Core
@@ -39,12 +41,10 @@ class WalletApp_GUI(Frame):
         print('wallet app is initializing')
 
         self.c_core = Core(my_port, c_host, c_port, self.update_callback)
-        # TODO 
-        self.pub_key = self.c_core.wallet.public_key
-        self.priv_key = self.c_core.wallet.private_key
-        self.bc_address = self.c_core.wallet.blockchain_address
         self.c_core.start()
         self.update_balance()
+        self.update_blockchain_semaphore = threading.Semaphore(1)
+        self.start_update_blockchain()
 
     def display_info(self, title, info):
         """
@@ -62,7 +62,7 @@ class WalletApp_GUI(Frame):
         self.update_balance()
 
     def update_balance(self):
-        balance = str(self.c_core.blockchain.calculate_total_amount(self.bc_address))
+        balance = str(self.c_core.blockchain.calculate_total_amount(self.c_core.wallet.blockchain_address))
         self.coin_balance.set(balance)
 
     def create_menu(self):
@@ -73,13 +73,13 @@ class WalletApp_GUI(Frame):
         self.subMenu = Menu(self.menuBar, tearoff=0)
         self.menuBar.add_cascade(label='Menu', menu=self.subMenu)
         self.subMenu.add_command(label='Show My Info', command=self.show_my_info)
-        self.subMenu.add_command(label='Wallet Sync', command=self.wallet_sync)
+        self.subMenu.add_command(label='Wallet Sync', command=self.sync_miner_wallet)
         self.subMenu.add_command(label='Update Blockchan', command=self.update_blockchain)
         self.subMenu.add_separator()
         self.subMenu.add_command(label='Quit', command=self.quit)
 
         self.subMenu2 = Menu(self.menuBar, tearoff=0)
-        self.menuBar.add_cascade(label='Logs')
+        self.menuBar.add_cascade(label='Logs', menu=self.subMenu2)
         self.subMenu2.add_command(label='Show Blockchain', command=self.show_my_blockchain)
 
     def show_my_info(self):
@@ -87,13 +87,9 @@ class WalletApp_GUI(Frame):
         label = Label(f, text='My Info')
         label.pack()
 
-        # TODO 
-        #pub_key = self.c_core.wallet.private_key
-        pub_key = self.pub_key
-        #priv_key = self.c_core.wallet.public_key
-        priv_key = self.priv_key
-        #bc_address = self.c_core.wallet.blockchain_address
-        bc_address = self.bc_address
+        pub_key = self.c_core.wallet.private_key
+        priv_key = self.c_core.wallet.public_key
+        bc_address = self.c_core.wallet.blockchain_address
         
         pub_key_str = Label(f, text='public key')
         pub_key_str.pack()
@@ -114,18 +110,45 @@ class WalletApp_GUI(Frame):
     def update_blockchain(self):
         self.c_core.send_req_full_chain()
 
+    def start_update_blockchain(self):
+        is_acquire = self.update_blockchain_semaphore.acquire(blocking=False)
+        if is_acquire:
+            with contextlib.ExitStack() as stack:
+                stack.callback(self.update_blockchain_semaphore.release)
+                self.update_blockchain()
+                update_interval = 10
+                loop = threading.Timer(update_interval, self.start_update_blockchain)
+                loop.start()
+
+    def sync_miner_wallet(self):
+        print('sync miner wallet is called')
+        self.c_core.send_req_key_info()
+
     def wallet_sync(self):
-        f = TK()
+        f = Tk()
         label = Label(f, text='Wallet Sync')
         label.pack()
 
-        self.pub_key_box = Entry(f, width=70,height=10)
-        self.pub_key_box.pack()
-        self.priv_key_box = Entry(f, width=70,height=10)
-        self.priv_key_box.pack()
-        self.bc_address_box = Entry(f, width=70,height=10)
-        self.bc_address_box.pack()
-        self.exec_button = Button(f, text='実行', command=self.button_func)
+        lf0 = LabelFrame(f, text='public key')
+        lf0.pack(side=TOP, fill='both', expand='yes',padx=7, pady=7)
+
+        lf1 = LabelFrame(f, text='private key')
+        lf1.pack(side=TOP, fill='both', expand='yes',padx=7, pady=7)
+
+        lf2 = LabelFrame(f, text='blockchain address')
+        lf2.pack(side=TOP, fill='both', expand='yes',padx=7, pady=7)
+
+        lf3 = LabelFrame(f, text='')
+        lf3.pack(side=TOP, fill='both', expand='yes',padx=7, pady=7)
+
+        self.pub_key_box = Entry(lf0, bd=2)
+        self.pub_key_box.grid(row=70,column=10,pady=5)
+        self.priv_key_box = Entry(lf1, bd=2)
+        self.priv_key_box.grid(row=70,column=10,pady=5)
+        self.bc_address_box = Entry(lf2, bd=2)
+        self.bc_address_box.grid(row=70,column=10,pady=5)
+        self.exec_button = Button(lf3, text='実行', command=self.button_func)
+        self.exec_button.grid(row=6, column=1,sticky='NSEW')
         
     def button_func(self):
         pub_key = self.pub_key_box.get()
@@ -159,37 +182,40 @@ class WalletApp_GUI(Frame):
         lf = LabelFrame(self, text='Current Balance')
         lf.pack(side=TOP, fill='both', expand='yes', padx=7, pady=7)
 
-        lf2 = LabelFrame(self, text='')
-        lf2.pack(side=BOTTOM, fill='both', expand='yes', padx=7, pady=7)
+        lf2 = LabelFrame(self, text='Recipient Address')
+        lf2.pack(side=TOP, fill='both', expand='yes', padx=7, pady=7)
 
-        lf3 = LabelFrame(self,text='')
-        lf3.pack(side=BOTTOM, fill='both', expand='yes', padx=7, pady=7)
+        lf3 = LabelFrame(self,text='Amount pay')
+        lf3.pack(side=TOP, fill='both', expand='yes', padx=7, pady=7)
+
+        lf4 = LabelFrame(self, text='')
+        lf4.pack(side=TOP, fill='both', expand='yes', padx=7, pady=7)
 
         #所持コインの総額表示領域のラベル
         self.balance = Label(lf, textvariable=self.coin_balance, font='Helvetica 20')
         self.balance.pack()
 
         #受信者となる相手の公開鍵
-        self.label = Label(lf2, text='Recipient Address:')
-        self.label.grid(row=0, pady=5)
+        self.label = Label(lf2, text='')
+        self.label.grid(row=70,column=10, pady=5)
 
         self.recipient_address = Entry(lf2, bd=2)
         self.recipient_address.grid(row=70, column=10, pady=5)
 
         # 送金額
-        self.label2 = Label(lf3, text='Amount to pay :')
+        self.label2 = Label(lf3, text='')
         self.label2.grid(row=1, pady=5)
     
         self.amountBox = Entry(lf3, bd=2)
         self.amountBox.grid(row=1, column=1, pady=5, sticky='NSEW')
 
         # 送金実行ボタン
-        self.sendBtn = Button(lf2, text='\nSend Coin(s)\n', command=self.sendCoins)
+        self.sendBtn = Button(lf4, text='\nSend Coin(s)\n', command=self.sendCoins)
         self.sendBtn.grid(row=6, column=1, sticky='NSEW')
 
     def sendCoins(self):
         sendAtp = self.amountBox.get()
-        recipient_address = recipient_address.get()
+        recipient_address = self.recipient_address.get()
         
         if not sendAtp:
             messagebox.showwarning('Warning', 'Please enter the Amount to pay')
@@ -201,15 +227,16 @@ class WalletApp_GUI(Frame):
             result = messagebox.askyesno('Confirmation', f'sending {sendAtp} coins to :\n{recipient_address}')
 
         if result:
-            if sendAtp > self.c_core.blockchain.calculate_total_amount():
+
+            if float(sendAtp) > self.c_core.blockchain.calculate_total_amount(self.c_core.wallet.blockchain_address):
                 messagebox.showwarning('short of coin', 'not enough coin to be sent')
                 return
 
             transaction = Transaction(
-                self.sender_private_key,
-                self.sender_public_key,
-                self.sender_blockchain_address,
-                recipient_blockchain_address,
+                self.c_core.wallet.private_key,
+                self.c_core.wallet.public_key,
+                self.c_core.wallet.blockchain_address,
+                recipient_address,
                 sendAtp
             )
             msg = transaction.get_json_msg()

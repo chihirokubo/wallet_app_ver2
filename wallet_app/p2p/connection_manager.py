@@ -69,7 +69,7 @@ class ConnectionManager:
             msgtxt : MessageManagerのbuild_messageによって生成されたJSON形式のメッセージ
         """
         msgtxt = self.mm.build(msg_type, self.port, payload)
-        print('generated_msg:', msgtxt)
+        # print('generated_msg:', msgtxt)
         return msgtxt
 
     # 指定されたノードに対してメッセージを送信する
@@ -153,7 +153,7 @@ class ConnectionManager:
             return
             
         result, reason, cmd, peer_port, payload = self.mm.parse(data_sum)
-        print(result, reason, cmd, peer_port, payload)
+        # print(result, reason, cmd, peer_port, payload)
         status = (result, reason)
 
         if status == ('error', ERR_PROTOCOL_UNMATCH):
@@ -202,13 +202,13 @@ class ConnectionManager:
                 return
         elif status == ('ok', OK_WITH_PAYLOAD):
             if cmd == MSG_CORE_LIST:
-                    # TODO: 受信したリストをただ上書きしてしまうのは本来セキュリティ的には宜しくない。
-                    # 信頼できるノードの鍵とかをセットしとく必要があるかも
-                    # このあたりの議論については６章にて補足予定
-                    print('Refresh the core node list...')
-                    new_core_set = pickle.loads(payload.encode('utf8'))
-                    print('latest core node list: ', new_core_set)
-                    self.core_node_set.overwrite(new_core_set)
+                # TODO: 受信したリストをただ上書きしてしまうのは本来セキュリティ的には宜しくない。
+                # 信頼できるノードの鍵とかをセットしとく必要があるかも
+                # このあたりの議論については６章にて補足予定
+                print('Refresh the core node list...')
+                new_core_set = pickle.loads(payload.encode('utf8'))
+                print('latest core node list: ', new_core_set)
+                self.core_node_set.overwrite(new_core_set)
             else:
                 is_core = self.core_node_set.has_this_peer((addr[0], peer_port))
                 self.callback((result, reason, cmd, peer_port, payload), is_core, None)

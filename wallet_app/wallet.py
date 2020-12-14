@@ -6,6 +6,7 @@ import logging
 import sys
 import time
 import json
+import pickle
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
@@ -72,11 +73,11 @@ class Transaction(object):
             'sender_public_key': self.sender_public_key,
             'sender_blockchain_address': self.sender_blockchain_address,
             'recipient_blockchain_address': self.recipient_blockchain_address,
-            'value': float(self.value),
+            'value': self.value,
             'timestamp': self.timestamp,
-            'signature': self.signature
+            'signature': pickle.dumps(self.signature,0).decode()
         }
-        return json.dupms(msg)
+        return json.dumps(msg)
 
     def generate_signature(self):
         """ 送金者の秘密鍵でトランザクションに署名

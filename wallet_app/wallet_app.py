@@ -11,6 +11,8 @@ import base64
 import time
 import pprint
 import copy
+import threading
+import contextlib
 
 from wallet import Transaction
 from core.client_core import ClientCore as Core
@@ -39,12 +41,10 @@ class WalletApp_GUI(Frame):
         print('wallet app is initializing')
 
         self.c_core = Core(my_port, c_host, c_port, self.update_callback)
-        # TODO 
-        self.pub_key = self.c_core.wallet.public_key
-        self.priv_key = self.c_core.wallet.private_key
-        self.bc_address = self.c_core.wallet.blockchain_address
         self.c_core.start()
         self.update_balance()
+        self.update_blockchain_semaphore = threading.Semaphore(1)
+        self.start_update_blockchain()
 
     def display_info(self, title, info):
         """
@@ -62,7 +62,7 @@ class WalletApp_GUI(Frame):
         self.update_balance()
 
     def update_balance(self):
-        balance = str(self.c_core.blockchain.calculate_total_amount(self.bc_address))
+        balance = str(self.c_core.blockchain.calculate_total_amount(self.c_core.wallet.blockchain_address))
         self.coin_balance.set(balance)
 
     def create_menu(self):
@@ -73,7 +73,7 @@ class WalletApp_GUI(Frame):
         self.subMenu = Menu(self.menuBar, tearoff=0)
         self.menuBar.add_cascade(label='Menu', menu=self.subMenu)
         self.subMenu.add_command(label='Show My Info', command=self.show_my_info)
-        self.subMenu.add_command(label='Wallet Sync', command=self.wallet_sync)
+        self.subMenu.add_command(label='Wallet Sync', command=self.sync_miner_wallet)
         self.subMenu.add_command(label='Update Blockchan', command=self.update_blockchain)
         self.subMenu.add_separator()
         self.subMenu.add_command(label='Quit', command=self.quit)
@@ -87,13 +87,9 @@ class WalletApp_GUI(Frame):
         label = Label(f, text='My Info')
         label.pack()
 
-        # TODO 
-        #pub_key = self.c_core.wallet.private_key
-        pub_key = self.pub_key
-        #priv_key = self.c_core.wallet.public_key
-        priv_key = self.priv_key
-        #bc_address = self.c_core.wallet.blockchain_address
-        bc_address = self.bc_address
+        pub_key = self.c_core.wallet.private_key
+        priv_key = self.c_core.wallet.public_key
+        bc_address = self.c_core.wallet.blockchain_address
         
         pub_key_str = Label(f, text='public key')
         pub_key_str.pack()
@@ -113,6 +109,20 @@ class WalletApp_GUI(Frame):
 
     def update_blockchain(self):
         self.c_core.send_req_full_chain()
+
+    def start_update_blockchain(self):
+        is_acquire = self.update_blockchain_semaphore.acquire(blocking=False)
+        if is_acquire:
+            with contextlib.ExitStack() as stack:
+                stack.callback(self.update_blockchain_semaphore.release)
+                self.update_blockchain()
+                update_interval = 10
+                loop = threading.Timer(update_interval, self.start_update_blockchain)
+                loop.start()
+
+    def sync_miner_wallet(self):
+        print('sync miner wallet is called')
+        self.c_core.send_req_key_info()
 
     def wallet_sync(self):
         f = Tk()
@@ -205,7 +215,7 @@ class WalletApp_GUI(Frame):
 
     def sendCoins(self):
         sendAtp = self.amountBox.get()
-        recipient_address = recipient_address.get()
+        recipient_address = self.recipient_address.get()
         
         if not sendAtp:
             messagebox.showwarning('Warning', 'Please enter the Amount to pay')
@@ -217,15 +227,16 @@ class WalletApp_GUI(Frame):
             result = messagebox.askyesno('Confirmation', f'sending {sendAtp} coins to :\n{recipient_address}')
 
         if result:
-            if sendAtp > self.c_core.blockchain.calculate_total_amount():
+
+            if float(sendAtp) > self.c_core.blockchain.calculate_total_amount(self.c_core.wallet.blockchain_address):
                 messagebox.showwarning('short of coin', 'not enough coin to be sent')
                 return
 
             transaction = Transaction(
-                self.sender_private_key,
-                self.sender_public_key,
-                self.sender_blockchain_address,
-                recipient_blockchain_address,
+                self.c_core.wallet.private_key,
+                self.c_core.wallet.public_key,
+                self.c_core.wallet.blockchain_address,
+                recipient_address,
                 sendAtp
             )
             msg = transaction.get_json_msg()

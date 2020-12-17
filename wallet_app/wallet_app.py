@@ -3,11 +3,9 @@ from tkinter import messagebox
 from tkinter import filedialog
 from tkinter.ttk import Button, Style
 from tkinter import ttk
-import binascii
 import os
 import json
 import sys
-import base64
 import time
 import pprint
 import copy

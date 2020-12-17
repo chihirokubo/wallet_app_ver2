@@ -55,7 +55,7 @@ class ServerCore:
 
     def start(self):
         """
-            Coreノードとしての待受を開始する（上位UI層向け
+            Coreノードとしての待受を開始
         """
         self.server_state = STATE_STANDBY
         self.cm.start()
@@ -63,7 +63,7 @@ class ServerCore:
 
     def join_network(self):
         """
-            事前に取得した情報に従い拠り所となる他のCoreノードに接続する（上位UI層向け
+            事前に取得した情報に従い拠り所となる他のCoreノードに接続
         """
         if self.core_node_host is not None:
             self.server_state = STATE_CONNECTED_TO_NETWORK
@@ -73,7 +73,7 @@ class ServerCore:
 
     def shutdown(self):
         """
-            待ち受け状態のServer Socketを閉じて終了する（上位UI層向け
+            待ち受け状態のServer Socketを閉じて終了
         """
         self.server_state = STATE_SHUTTING_DOWN
         print('Shutdown server...')

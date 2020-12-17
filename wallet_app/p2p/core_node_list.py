@@ -9,10 +9,7 @@ class CoreNodeList:
 
     def add(self, peer):
         """
-        Coreノードをリストに追加する。
-
-        param:
-            peer : Coreノードとして格納されるノードの接続情報（IPアドレスとポート番号）
+        Coreノードをリストに追加
         """
         with self.lock:
             print('Adding peer: ', peer)
@@ -22,10 +19,7 @@ class CoreNodeList:
 
     def remove(self, peer):
         """
-        離脱したと判断されるCoreノードをリストから削除する。
-
-        param:
-            peer : 削除するノードの接続先情報（IPアドレスとポート番号）
+        Coreノードをリストから削除
         """
         with self.lock:
             if peer in self.list:
@@ -35,7 +29,7 @@ class CoreNodeList:
 
     def overwrite(self, new_list):
         """
-        複数のpeerの生存確認を行った後で一括での上書き処理をしたいような場合はこちら
+        Coreノードリストを上書き
         """
         with self.lock:
             print('core node list will be going to overwrite')
@@ -45,7 +39,7 @@ class CoreNodeList:
 
     def get_list(self):
         """
-        現在接続状態にあるPeerの一覧を返却する
+        現在接続状態にあるPeerを返す
         """
         return self.list
 
@@ -55,7 +49,7 @@ class CoreNodeList:
 
     def get_c_node_info(self):
         """
-        リストのトップにあるPeerを返却する
+        リストのトップにあるPeerを返す
         """
         return list(self.list)[0]
 

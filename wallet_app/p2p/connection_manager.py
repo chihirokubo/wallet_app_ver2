@@ -22,7 +22,7 @@ from .message_manager import (
 )
 
 
-# 動作確認用の値。本来は30分(1800)くらいがいいのでは
+# 生存確認
 PING_INTERVAL = 10
 
 
@@ -40,7 +40,6 @@ class ConnectionManager:
         self.mm = MessageManager()
         self.callback = callback
 
-    # 待受を開始する際に呼び出される（ServerCore向け
     def start(self):
         t = threading.Thread(target=self.__wait_for_access)
         t.start()
@@ -51,22 +50,17 @@ class ConnectionManager:
         self.ping_timer_e = threading.Timer(PING_INTERVAL, self.__check_edges_connection)
         self.ping_timer_e.start()
 
-    # ユーザが指定した既知のCoreノードへの接続（ServerCore向け
     def join_network(self, host, port):
+        """
+        指定したノードへ接続
+        """
         self.my_c_host = host
         self.my_c_port = port
         self.__connect_to_P2PNW(host, port)
 
     def get_message_text(self, msg_type, payload = None):
         """
-        指定したメッセージ種別のプロトコルメッセージを作成して返却する
-        
-        params:
-            msg_type : 作成したいメッセージの種別をMessageManagerの規定に従い指定
-            payload : メッセージにデータを格納したい場合に指定する
-        
-        return:
-            msgtxt : MessageManagerのbuild_messageによって生成されたJSON形式のメッセージ
+        指定したメッセージ種別のプロトコルメッセージを作成
         """
         msgtxt = self.mm.build(msg_type, self.port, payload)
         # print('generated_msg:', msgtxt)
@@ -84,7 +78,6 @@ class ConnectionManager:
             print('Connection failed for peer : ', peer)
             self.__remove_peer(peer)
 
-    # Coreノードリストに登録されている全てのノードに対して同じメッセージをブロードキャストする
     def send_msg_to_all_peer(self, msg):
         print('send_msg_to_all_peer was called!')
         current_list = self.core_node_set.get_list()
@@ -93,7 +86,6 @@ class ConnectionManager:
                 print("message will be sent to ... ", peer)
                 self.send_msg(peer, msg)
 
-    # Edgeノードリストに登録されている全てのノードに対して同じメッセージをブロードキャストする
     def send_msg_to_all_edge(self, msg):
         print('send_msg_to_all_edge was called! ')
         current_list = self.edge_node_set.get_list()
@@ -101,7 +93,6 @@ class ConnectionManager:
             print("message will be sent to ... " ,edge)
             self.send_msg(edge, msg)
 
-    # 終了前の処理としてソケットを閉じる
     def connection_close(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((self.host, self.port))
@@ -109,7 +100,7 @@ class ConnectionManager:
         s.close()
         self.ping_timer_p.cancel()
         self.ping_timer_e.cancel()
-        #離脱要求の送信
+        # 離脱要求送信
         if self.my_c_host is not None:
             msg = self.mm.build(MSG_REMOVE, self.port)
             self.send_msg((self.my_c_host, self.my_c_port), msg)
@@ -202,9 +193,6 @@ class ConnectionManager:
                 return
         elif status == ('ok', OK_WITH_PAYLOAD):
             if cmd == MSG_CORE_LIST:
-                # TODO: 受信したリストをただ上書きしてしまうのは本来セキュリティ的には宜しくない。
-                # 信頼できるノードの鍵とかをセットしとく必要があるかも
-                # このあたりの議論については６章にて補足予定
                 print('Refresh the core node list...')
                 new_core_set = pickle.loads(payload.encode('utf8'))
                 print('latest core node list: ', new_core_set)
@@ -218,32 +206,31 @@ class ConnectionManager:
 
     def __add_peer(self, peer):
         """
-        Coreノードをリストに追加する。クラスの外からは利用しない想定
+        Coreノードをリストに追加
         """
         self.core_node_set.add((peer))
 
     def __add_edge_node(self, edge):
         """
-        Edgeノードをリストに追加する。クラスの外からは利用しない想定
+        Edgeノードをリストに追加
         """
         self.edge_node_set.add((edge))
 
     def __remove_peer(self, peer):
         """
-        離脱したと判断されるCoreノードをリストから削除する。クラスの外からは利用しない想定
+        離脱したと判断されるCoreノードをリストから削除
         """
         self.core_node_set.remove(peer)
 
     def __remove_edge_node(self, edge):
         """
-        離脱したと判断されるEdgeノードをリストから削除する。クラスの外からは利用しない想定
+        離脱したと判断されるEdgeノードをリストから削除
         """
         self.edge_node_set.remove(edge)
 
     def __check_peers_connection(self):
         """
-        接続されているCoreノード全ての生存確認を行う。クラスの外からは利用しない想定
-        この確認処理は定期的に実行される
+        coreノードの生存確認
         """
         print('check_peers_connection was called')
         current_core_list = self.core_node_set.get_list()
@@ -268,8 +255,7 @@ class ConnectionManager:
 
     def __check_edges_connection(self):
         """
-        接続されているEdgeノード全ての生存確認を行う。クラスの外からは利用しない想定
-        この確認処理は定期的に実行される
+        edgeノードの生存確認
         """
         print('check_edges_connection was called')
         current_edge_list = self.edge_node_set.get_list()
@@ -286,7 +272,7 @@ class ConnectionManager:
 
     def __is_alive(self, target):
         """
-        有効ノード確認メッセージの送信
+        ノード生存確認メッセージの送信
         """
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

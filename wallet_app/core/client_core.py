@@ -7,11 +7,9 @@ import utils
 from blockchain import BlockChain
 from wallet import Wallet
 from p2p.connection_manager_4edge import ConnectionManager4Edge
-from p2p.my_protocol_message_handler import MyProtocolMessageHandler
 from p2p.message_manager import (
     MessageManager,
     RSP_FULL_CHAIN,
-    MSG_ENHANCED,
     MSG_KEY_INFO,
     MSG_REQUEST_KEY_INFO,
     MSG_REQUEST_FULL_CHAIN,
@@ -37,8 +35,6 @@ class ClientCore:
         self.blockchain = BlockChain()
         self.wallet = Wallet()
         self.cm = ConnectionManager4Edge(self.my_ip, self.my_port, c_host, c_port, self.__handle_message)
-        self.mpm = MyProtocolMessageHandler()
-        self.my_protocol_message_store = []
         self.callback = callback
 
     def start(self, my_pubkey=None):
@@ -57,12 +53,6 @@ class ClientCore:
         self.client_state = STATE_SHUTTING_DOWN
         print('Shutdown edge node ...')
         self.cm.connection_close()
-
-    def get_my_current_state(self):
-        """
-            現在のEdgeノードの状態を取得する（上位UI層向け
-        """
-        return self.client_state
 
     def send_req_full_chain(self):
         """
@@ -98,34 +88,8 @@ class ClientCore:
         print(msg_txt)
         self.cm.send_msg((self.my_core_host, self.my_core_port), msg_txt)
 
-    def get_my_protocol_messages(self):
-        """
-            拡張メッセージとして送信されてきたメッセージを格納しているリストを取得する
-            （現状未整備で特に意図した利用用途なし）
-        """
-
-        if self.my_protocol_message_store != []:
-            return self.my_protocol_message_store
-        else:
-            return None
-
     def get_my_blockchain(self):
-        return self.blockchain.get_my_chain()
-
-    def __client_api(self, request, message):
-        """
-            MyProtocolMessageHandlerで呼び出すための拡張関数群（現状未整備）
-
-            params:
-                request : MyProtocolMessageHandlerから呼び出されるコマンドの種別
-                message : コマンド実行時に利用するために引き渡されるメッセージ
-        """
-        if request == 'pass_message_to_client_application':
-            self.my_protocol_message_store.append(message)
-        elif request == 'api_type':
-            return 'client_core_api'
-        else:
-            print('not implemented api was used')
+        return self.blockchain.chain
 
     def __handle_message(self, msg):
         """
@@ -133,7 +97,7 @@ class ClientCore:
         """
         if msg[2] == RSP_FULL_CHAIN:
             new_block_chain = json.loads(msg[4])
-            result, _ = self.blockchain.resolve_conflicts(new_block_chain)
+            result = self.blockchain.resolve_conflicts(new_block_chain)
             if result is not None:
                 self.callback()
             else:
@@ -141,13 +105,3 @@ class ClientCore:
         elif msg[2] == MSG_KEY_INFO:
             miner_wallet = pickle.loads(msg[4].encode('utf8'))
             self.wallet = miner_wallet
-
-        elif msg[2] == MSG_ENHANCED:
-            # P2P Network を単なるトランスポートして使っているアプリケーションが独自拡張したメッセージはここで処理する。
-            # SimpleBitcoin としてはこの種別は使わない
-            self.mpm.handle_message(msg[4], self.__client_api)
-
-    def __get_myip(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 80))
-        return s.getsockname()[0]

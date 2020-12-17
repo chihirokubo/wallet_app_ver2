@@ -64,7 +64,6 @@ class Transaction(object):
         self.sender_blockchain_address = sender_blockchain_address
         self.recipient_blockchain_address = recipient_blockchain_address
         self.value = value
-        self.timestamp = time.time()
         self.signature = self.generate_signature()
 
     def get_json_msg(self):
@@ -74,7 +73,6 @@ class Transaction(object):
             'sender_blockchain_address': self.sender_blockchain_address,
             'recipient_blockchain_address': self.recipient_blockchain_address,
             'value': self.value,
-            'timestamp': self.timestamp,
             'signature': pickle.dumps(self.signature,0).decode()
         }
         return json.dumps(msg)
@@ -89,8 +87,7 @@ class Transaction(object):
         transaction = utils.sorted_dict_by_key({
             'sender_blockchain_address': self.sender_blockchain_address,
             'recipient_blockchain_address': self.recipient_blockchain_address,
-            'value': float(self.value),
-            'timestamp': self.timestamp
+            'value': float(self.value)
         })
         sha256.update(str(transaction).encode('utf-8'))
         message = sha256.digest()

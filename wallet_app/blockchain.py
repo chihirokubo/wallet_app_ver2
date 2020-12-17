@@ -6,7 +6,6 @@ import sys
 import random
 import time
 import threading
-import copy
 
 # Deleted by 暗号班
 # 楕円曲線暗号と署名検証はスクラッチ実装したので不必要
@@ -21,11 +20,15 @@ from crypt import S256Point
 from crypt import G
 from crypt import N
 
+# Added & Deleted By コンセンサス班
+#MINING_DIFFICULTY = 3
 MINING_SENDER = 'THE BLOCKCHAIN'
-MINING_TIMER_SEC = 50
 MINING_REWARD = 1.0
+MINING_TIMER_SEC = 20
 
-# マイニング系はcore/server_coreに移動
+BLOCKCHAIN_PORT_RANGE = (5000, 5003)
+NEIGHBOURS_IP_RANGE_NUM = (0, 1)
+BLOCKCHAIN_NEIGHBOURS_SYNC_TIME_SEC = 20
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
@@ -36,30 +39,41 @@ class BlockChain(object):
     def __init__(self, blockchain_address=None):
         self.transaction_pool = []
         self.chain = []
-        self.neighbours = []
-        self.previous_hash = self.hash({})
         self.difficulty = 3     # Added By コンセンサス
         self.mining_speed = 0.0 # Added By コンセンサス
-        self.create_block(0, self.previous_hash)
+        self.create_genesis_block()
         self.blockchain_address = blockchain_address
+    
+    def create_genesis_block(self):
+        print('create_genesis_block is called')
+        block = utils.sorted_dict_by_key({
+            'timestamp': time.time(),
+            'transactions' : self.transaction_pool,
+            'nonce': 0,
+            'previous_hash': self.hash({})
+        })
+        self.chain.append(block)
+        self.transaction_pool = []
 
     # 共通
     def create_block(self, nonce, previous_hash):
-        """
-        ブロック生成
-        returns:
-            is_created: ブロックが正常に追加
-            block: 追加されたブロック
-        """
+        print('create_block is called')
         block = utils.sorted_dict_by_key({
-            'transactions': json.dumps(self.transaction_pool),
+            'timestamp': time.time(),
+            'difficulty': self.difficulty,
+            'transactions': self.transaction_pool,
             'nonce': nonce,
-            'previous_hash': previous_hash,
-            'difficulty': self.difficulty
+            'previous_hash': previous_hash
         })
-        self.previous_hash = self.hash(block)
+
+        if not self.valid_proof(block['transactions'],block['previous_hash'], 
+                block['nonce'],block['difficulty']):
+            return False, None
+
         self.chain.append(block)
-        return block
+        self.transaction_pool = []
+
+        return True, block
 
     # 共通
     def hash(self, block):
@@ -68,15 +82,13 @@ class BlockChain(object):
 
     # 共通
     def add_transaction(self, sender_blockchain_address,
-                        recipient_blockchain_address, value, timestamp,
+                        recipient_blockchain_address, value,
                         sender_public_key=None, signature=None):
-
         print('add_transaction is called')
         transaction = utils.sorted_dict_by_key({
             'sender_blockchain_address': sender_blockchain_address,
             'recipient_blockchain_address': recipient_blockchain_address,
-            'value': float(value),
-            'timestamp': timestamp
+            'value': float(value)
         })
 
         if sender_blockchain_address == MINING_SENDER:
@@ -93,11 +105,10 @@ class BlockChain(object):
                 return False
 
             self.transaction_pool.append(transaction)
-            logger.info({'action':'add_transaction', 'status': 'success'})
             return True
-        print('yea not verified')
         return False
 
+    
     # Changed By 暗号班
     def verify_transaction_signature(
             self, sender_public_key, signature, transaction):
@@ -105,7 +116,6 @@ class BlockChain(object):
         esdsaの内部で行なっていた計算をここで行っているイメージ
         返り値はbool型
         """
-        print('verifying transaction signature is called')
         sha256 = hashlib.sha256()
         sha256.update(str(transaction).encode('utf-8'))
         message = sha256.digest()
@@ -152,20 +162,18 @@ class BlockChain(object):
     # Changed By コンセンサス
     def valid_proof(self, transactions, previous_hash, nonce, difficulty):
         guess_block = utils.sorted_dict_by_key({
-            'transactions': json.dumps(transactions),
+            'transactions': transactions,
             'nonce': nonce,
-            'previous_hash': previous_hash,
-            'difficulty': difficulty
+            'previous_hash': previous_hash
         })
         guess_hash = self.hash(guess_block)
-        result = guess_hash[:difficulty] == '0'*difficulty
-        return result
+        print('guess_hash', guess_hash)
+        return guess_hash[:difficulty] == '0'*difficulty
 
     # Changed By コンセンサス
     def proof_of_work(self):
         transactions = self.transaction_pool.copy()
-        print('transaction pool : ',transactions)
-        previous_hash = self.previous_hash
+        previous_hash = self.hash(self.chain[-1])
         nonce = 0
         start = time.time()
         while self.valid_proof(transactions, previous_hash, nonce, self.difficulty) is False:
@@ -174,16 +182,52 @@ class BlockChain(object):
             if elapse >= 10.0:
                 self.difficulty -= 1
                 return -1
-        
         return nonce
 
-    # マイニングはcore/Server_core.pyに移動
+
+    # Changed By コンセンサス
+    def mining(self, callback):
+        # if not self.transaction_pool:
+        #    return False
+        start = time.time()
+        self.add_transaction(
+            sender_blockchain_address=MINING_SENDER,
+            recipient_blockchain_address=self.blockchain_address,
+            value=MINING_REWARD)
+        nonce = self.proof_of_work()
+        if nonce == -1:
+            return False
+        previous_hash = self.hash(self.chain[-1])
+        self.create_block(nonce, previous_hash)
+        logger.info({'action': 'mining', 'status': 'success'})
+
+        # resolve conflict呼び出し
+        callback()
+
+        elapse = round(time.time() - start, 4)
+        self.difficulty_adjustment(elapse)
+
+        # print('mining speed : ', str(round(self.mining_speed, 3)))
+        # print('difficult : ', str(self.difficulty))
+
+        return True
+
+    # Changed by コンセンサス
+    def start_mining(self):
+        is_acquire = self.mining_semaphore.acquire(blocking=False)
+        if is_acquire:
+            with contextlib.ExitStack() as stack:
+                stack.callback(self.mining_semaphore.release)
+                self.mining()
+                mining_interval = self.mining_speed + random.uniform(9.8, 10.3)
+                loop = threading.Timer(round(mining_interval), self.start_mining)
+                loop.start()
 
     # 共通
     def calculate_total_amount(self, blockchain_address):
         total_amount = 0.0
         for block in self.chain:
-            for transaction in json.loads(block['transactions']):
+            for transaction in block['transactions']:
                 value = float(transaction['value'])
                 if blockchain_address == transaction['recipient_blockchain_address']:
                     total_amount += value
@@ -198,96 +242,27 @@ class BlockChain(object):
         while current_index < len(chain):
             block = chain[current_index]
             if block['previous_hash'] != self.hash(pre_block):
-                print('previous hash conflict')
+                print('hash conflict')
                 return False
-
-            if current_index > 2 and not self.valid_proof(
-                json.loads(block['transactions']), block['previous_hash'],
+            print('block', block)
+            if not self.valid_proof(
+                block['transactions'], block['previous_hash'],
                 block['nonce'], block['difficulty']):
-                print('proof conflict')
+                print(' proof conflict')
                 return False
 
             pre_block = block
             current_index += 1
         return True
 
-    # p2pばん
     def resolve_conflicts(self, chain):
-        print('resolve conflicts is called')
-        my_chain_len = len(self.chain)
-        new_chain_len = len(chain)
-
-        pool_for_orphan_blocks = self.chain.copy()
-        has_orphan = False
-
-        if new_chain_len > my_chain_len and self.valid_chain(chain):
-            print('overwrite blockchain')
+        mychain_len = len(self.chain)
+        newchain_len = len(chain)
+        print('valid_chain: ',self.valid_chain(chain))
+        if newchain_len > mychain_len and self.valid_chain(chain):
             self.chain = chain
-            self.previous_hash = self.hash(chain[-1])
-            for tx in chain:
-                for tx1 in pool_for_orphan_blocks:
-                    if tx == tx1:
-                        pool_for_orphan_blocks.remove(tx1)
-
-            return self.previous_hash, pool_for_orphan_blocks
-        return None, []
- 
-    def get_my_chain(self):
-        return self.chain
-
-    def get_my_transaction_pool(self):
-        return self.get_my_transaction_pool
-
-    def remove_useless_transaction(self, transaction_pool):
-        """
-            自分が管理するチェーンに含まれるトランザクションを除いたリストを返す
-        """
-        if len(transaction_pool) != 0:
-            current_index = 1
-            while current_index < len(self.chain):
-                block = self.chain[current_index]
-                transactions = block['transactions']
-                for t in transactions:
-                    for t2 in transaction_pool:
-                        if t == json.dumps(t2):
-                            print('already exist in my blockchain :', t2)
-                            transaction_pool.remove(t2)
-                current_index+=1
-            return transaction_pool
-        else:
-            print('no transaction to be removed')
-            return []
-
-    def renew_transaction_pool(self):
-        print('renew_transaction_pool is called')
-        tp = self.transaction_pool.copy()
-        self.transaction_pool = self.remove_useless_transaction(tp)
-
-    @property
-    def stored_transactions(self):
-        current_index = 1
-        stored_transactions_in_chain = []
-
-        while current_index < len(self.chain):
-            block = self.chain[current_index]
-            transactions = block['transactions']
-            
-            for t in transactions:
-                stored_transactions_in_chain.append(t)
-            
-            current_index+=1
+            logger.info({'action': 'resolve_conflicts', 'status':'replaced'})
+            return True
         
-        return stored_transactions_in_chain
-
-    def append_block_to_mychain(self,block):
-        self.chain.append(block)
-
-    def block_check(self, block):
-        stored_tx = self.stored_transactions
-        txs = json.loads(block['transactions'])
-        print(txs)
-        for tx in txs:
-            if tx in stored_tx:
-                return False
-        return True
-
+        logger.info({'action': 'resolve_conflicts', 'status': 'not_replaced'})
+        return False

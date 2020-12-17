@@ -13,12 +13,13 @@ MSG_PING = 4
 MSG_ADD_AS_EDGE = 5
 MSG_REMOVE_EDGE = 6
 MSG_NEW_TRANSACTION = 7
-MSG_NEW_BLOCK = 8
-MSG_REQUEST_FULL_CHAIN = 9
-RSP_FULL_CHAIN = 10
-MSG_ENHANCED = 11
+MSG_DELETE_TRANSACTION = 8
+MSG_NEW_BLOCK = 9
+MSG_REQUEST_FULL_CHAIN = 10
+RSP_FULL_CHAIN = 11
 MSG_KEY_INFO = 12
 MSG_REQUEST_KEY_INFO = 13
+
 
 ERR_PROTOCOL_UNMATCH = 0
 ERR_VERSION_UNMATCH = 1
@@ -58,13 +59,7 @@ class MessageManager:
 
     def parse(self, msg):
         """
-        プロトコルメッセージをパースして返却する
-
-        params
-            msg : JSON形式のプロトコルメッセージデータ
-        return :
-
-          結果（OK or NG）とパース結果の種別（ペイロードあり/なし）と送信元ポート番号およびペーロードのデータ
+        プロトコルメッセージをパースして返却
         """
         msg = json.loads(msg)
         msg_ver = StrictVersion(msg['version'])
@@ -77,7 +72,7 @@ class MessageManager:
             return ('error', ERR_PROTOCOL_UNMATCH, None, None, None)
         elif msg_ver > StrictVersion(MY_VERSION):
             return ('error', ERR_VERSION_UNMATCH, None, None, None)
-        elif cmd in (MSG_CORE_LIST, MSG_NEW_TRANSACTION, MSG_NEW_BLOCK, RSP_FULL_CHAIN, MSG_ENHANCED, MSG_KEY_INFO):
+        elif cmd in (MSG_CORE_LIST, MSG_NEW_TRANSACTION, MSG_NEW_BLOCK, RSP_FULL_CHAIN, MSG_KEY_INFO):
             result_type = OK_WITH_PAYLOAD
             return ('ok', result_type, cmd, my_port, payload)
         else:
